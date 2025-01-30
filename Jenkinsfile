@@ -10,9 +10,37 @@ pipeline {
         AWS_ECR_REPO = 'your-ecr-repo'  // ECR repository name
         ECS_CLUSTER = 'your-ecs-cluster'
         ECS_SERVICE = 'your-ecs-service'
+        TF_STATE_BUCKET = 'your-tf-state-bucket'  // S3 bucket for storing Terraform state
     }
 
+    
+        
+
     stages {
+        stage('Terraform: Init') {
+            steps {
+                script {
+                    sh 'terraform init -backend-config="bucket=${TF_STATE_BUCKET}"'
+                }
+            }
+        }
+
+        stage('Terraform: Plan') {
+            steps {
+                script {
+                    sh 'terraform plan -out=tfplan'
+                }
+            }
+        }
+
+        stage('Terraform: Apply') {
+            steps {
+                script {
+                    sh 'terraform apply -auto-approve tfplan'
+                }
+            }
+        }
+
         stage('Checkout') {
             steps {
                 // Checkout the code from the repository
@@ -97,9 +125,23 @@ pipeline {
                 }
             }
         }
+
+        stage('Run Ansible Playbook') {
+            steps {
+                script {
+                    sh '''
+                        ansible-playbook -i Ansible/ecs_setup.ini ecs_setup.yml
+                    '''
+                }
+            }
+        }
     }
 
     post {
+        always {
+            // Clean up any temporary resources
+            sh 'docker system prune -f'
+        }
         success {
             echo 'Deployment Successful!'
         }
