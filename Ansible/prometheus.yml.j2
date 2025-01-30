@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+
+scrape_configs:
+  - job_name: 'ecs-metrics'
+    static_configs:
+      - targets:
+        - 'localhost:9100'  # Your ECS containers or exporters
+    metrics_path: '/metrics'

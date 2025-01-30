@@ -1,0 +1,113 @@
+---
+- name: Setup AWS ECS with Prometheus, Grafana, PostgreSQL, Nginx, and file copy
+  hosts: ecs_instances
+  become: true  # Use 'sudo' for privileged actions
+  vars:
+    file_path: "/path/to/config.txt"  # Path to the file on your local machine
+    destination_path: "/opt/config.txt"
+    devops_group: "devops"  # Group for read/write access
+    postgres_version: "latest"  # Install latest version of PostgreSQL
+    
+  tasks:
+
+    # Task 1: Copy file from local to the server's /opt directory with restricted access
+    - name: Copy config.txt to /opt with read/write access for devops group
+      copy:
+        src: "{{ file_path }}"
+        dest: "{{ destination_path }}"
+        owner: root
+        group: "{{ devops_group }}"
+        mode: '0660'  # rw for user and group, no access for others
+      notify:
+        - restart_nginx
+
+    # Task 2: Install and Configure Prometheus (Monitoring)
+    - name: Install Prometheus dependencies
+      apt:
+        name: 
+          - prometheus
+          - prometheus-node-exporter
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Configure Prometheus to scrape ECS metrics
+      template:
+        src: prometheus.yml.j2  # Assuming you have a template file for prometheus.yml
+        dest: /etc/prometheus/prometheus.yml
+        mode: '0644'
+      notify:
+        - restart_prometheus
+
+    # Task 3: Install and Configure Grafana (Monitoring)
+    - name: Install Grafana
+      apt:
+        name: grafana
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Configure Grafana data source
+      template:
+        src: grafana_datasource.yml.j2  # Assuming you have a template file for Grafana datasource
+        dest: /etc/grafana/provisioning/datasources/prometheus.yml
+        mode: '0644'
+      notify:
+        - restart_grafana
+
+    # Task 4: Install and ensure PostgreSQL is installed and running
+    - name: Install PostgreSQL
+      apt:
+        name: postgresql
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Ensure PostgreSQL service is enabled and running
+      service:
+        name: postgresql
+        state: started
+        enabled: true
+
+    # Task 5: Install and Configure Nginx Web Server
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Ensure Nginx service is enabled and running
+      service:
+        name: nginx
+        state: started
+        enabled: true
+
+    # Task 6: Setup incident response procedure (Logging, Alerts)
+    - name: Install and configure AWS CloudWatch Logs
+      amazon.aws.cloudwatch_log:
+        log_group_name: /ecs/ecs-cluster-logs
+        log_stream_name: /ecs/ecs-service-logs
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    # Add basic alerting and log monitoring configuration, assume alerting is set up in Grafana & Prometheus
+    - name: Configure Prometheus alerts for critical metrics
+      template:
+        src: prometheus_alert_rules.yml.j2  # Assuming you have a template file for alert rules
+        dest: /etc/prometheus/alert.rules.yml
+        mode: '0644'
+      notify:
+        - restart_prometheus
+
+  handlers:
+    - name: restart_nginx
+      service:
+        name: nginx
+        state: restarted
+
+    - name: restart_prometheus
+      service:
+        name: prometheus
+        state: restarted
+
+    - name: restart_grafana
+      service:
+        name: grafana-server
+        state: restarted

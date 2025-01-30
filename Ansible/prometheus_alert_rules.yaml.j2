@@ -1,0 +1,11 @@
+groups:
+  - name: ecs-alerts
+    rules:
+    - alert: HighCpuUsage
+      expr: sum(rate(container_cpu_usage_seconds_total{container_name="ecs-container"}[1m])) by (container_name) > 0.8
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "CPU usage is over 80% for container {{ $labels.container_name }}"
+        description: "CPU usage for container {{ $labels.container_name }} is above 80% for 5 minutes."
